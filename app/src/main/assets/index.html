@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Vehicle Safety Check (Single File)</title>
+  <style>
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; background: #f6f7fb; color: #111; }
+header { padding: 16px 20px; background: #0b57d0; color: white; }
+header h1 { margin: 0 0 4px; font-size: 1.4rem; }
+header .sub { margin: 0; opacity: .9; }
+main { max-width: 900px; margin: 18px auto; padding: 0 16px; }
+section { background: white; border: 1px solid #e5e7eb; border-radius: 16px; padding: 16px; margin: 12px 0; box-shadow: 0 1px 2px rgba(0,0,0,.03); }
+h2 { margin: 0 0 12px; font-size: 1.1rem; }
+.driver label, .height-row label { display: flex; flex-direction: column; gap: 6px; margin: 10px 0; }
+input, textarea { padding: 10px 12px; border-radius: 10px; border: 1px solid #d1d5db; font-size: 1rem; background: #fff; }
+textarea { min-height: 120px; resize: vertical; }
+.list .item { display: grid; grid-template-columns: 1fr auto auto; align-items: center; gap: 8px; padding: 8px 0; border-bottom: 1px dashed #eee; }
+.list .item:last-child { border-bottom: 0; }
+.chip { padding: 8px 12px; border-radius: 999px; border: 1px solid transparent; cursor: pointer; font-weight: 600; }
+.chip.neutral { background: #eff6ff; color: #1e40af; border-color: #bfdbfe; }
+.chip.success { background: #ecfdf5; color: #065f46; border-color: #a7f3d0; }
+.chip.danger { background: #fef2f2; color: #991b1b; border-color: #fecaca; }
+.chip[aria-pressed="true"] { box-shadow: inset 0 0 0 2px rgba(0,0,0,.08); }
+.sig-wrap { border: 1px dashed #cbd5e1; border-radius: 14px; background: #fafafa; padding: 8px; }
+#sigPad { width: 100%; border-radius: 10px; background: white; border: 1px solid #e5e7eb; touch-action: none; }
+.sig-actions { display: flex; justify-content: flex-end; margin-top: 8px; }
+button { background: #f3f4f6; border: 1px solid #e5e7eb; border-radius: 10px; padding: 10px 14px; cursor: pointer; }
+button.primary { background: #0b57d0; color: white; border-color: #0b57d0; }
+button.ghost { background: white; }
+.actions { display: flex; gap: 10px; justify-content: flex-end; }
+footer { text-align: center; padding: 20px 10px; color: #6b7280; }
+.muted { color: #6b7280; font-size: .95rem; }
+.height-row { display: grid; grid-template-columns: 1fr auto auto; gap: 8px; align-items: end; }
+.height-box input { width: 100%; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Vehicle Safety Check</h1>
+    <p class="sub">Digital daily walkaround check (single-file)</p>
+  </header>
+
+  <main>
+    <section class="driver">
+      <label>Driver name
+        <input id="driverName" placeholder="Enter your full name" />
+      </label>
+      <label>Vehicle registration
+        <input id="vehicleReg" placeholder="AB12 CDE" />
+      </label>
+      <label>Fleet/Unit number (optional)
+        <input id="fleetNo" placeholder="e.g., Unit 42" />
+      </label>
+      <label>Location (optional)
+        <input id="location" placeholder="Depot / City" />
+      </label>
+      <label>Date & time
+        <input id="dateTime" type="datetime-local" />
+      </label>
+    </section>
+
+    <section class="height-box">
+      <h2>Height indicator</h2>
+      <div class="height-row">
+        <label>Vehicle height (feet & inches)
+          <input id="heightText" placeholder="e.g., 13'11&quot; or 14'9&quot;" />
+        </label>
+        <button class="chip neutral" id="heightPass">PASS</button>
+        <button class="chip danger" id="heightFail">FAIL</button>
+      </div>
+    </section>
+
+    <section>
+      <h2>Checklist</h2>
+      <div id="checklist" class="list"></div>
+    </section>
+
+    <section>
+      <h2>Comments & defects</h2>
+      <textarea id="comments" placeholder="Describe any defect(s) found. Include axle/position if relevant."></textarea>
+    </section>
+
+    <section>
+      <h2>Signature</h2>
+      <p class="muted">Use your finger or mouse to sign below.</p>
+      <div class="sig-wrap">
+        <canvas id="sigPad" width="640" height="200"></canvas>
+        <div class="sig-actions">
+          <button id="clearSig" class="ghost">Clear</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="actions">
+      <button id="saveDraft">Save draft</button>
+      <button id="submit" class="primary">Submit & Generate Report</button>
+    </section>
+  </main>
+
+  <footer>
+    <small>© Pilot build for academic project — Marius Adrian Ciudin. Data stored locally in your browser.</small>
+  </footer>
+
+  <script>
+  // --- Config ---
+  const CHECK_ITEMS = [
+    "Truck plating certificate",
+    "Number plates",
+    "Horn check",
+    "Mirror checks",
+    "Body, wings & battery check",
+    "Lights (headlights, indicators, brakes)",
+    "AdBlue & diesel level check",
+    "Suzies & coupling",
+    "Wheel security (nuts)",
+    "Tyres (damage, tread, pressure)",
+    "Load security (if applicable)",
+    "Reflectors & markers",
+    "Wipers & washer fluid",
+    "Brakes (service/parking)",
+    "Seatbelts & cab condition",
+    "Fire extinguisher & kit (if applicable)"
+  ];
+  const $ = sel => document.querySelector(sel);
+  function setDateTimeNow() {
+    const dt = $("#dateTime");
+    const now = new Date();
+    const off = new Date(now.getTime() - now.getTimezoneOffset()*60000).toISOString().slice(0,16);
+    dt.value = off;
+  }
+  function buildList() {
+    const list = $("#checklist");
+    CHECK_ITEMS.forEach((label, idx) => {
+      const row = document.createElement("div");
+      row.className = "item";
+      row.innerHTML = \`
+        <div>\${label}</div>
+        <button class="chip neutral" data-idx="\${idx}" data-state="PASS">PASS</button>
+        <button class="chip danger" data-idx="\${idx}" data-state="FAIL">FAIL</button>
+      \`;
+      list.appendChild(row);
+    });
+    $("#heightPass").addEventListener("click", () => toggleHeight("PASS"));
+    $("#heightFail").addEventListener("click", () => toggleHeight("FAIL"));
+    list.addEventListener("click", (e) => {
+      const btn = e.target.closest(".chip");
+      if (!btn) return;
+      const idx = btn.getAttribute("data-idx");
+      const state = btn.getAttribute("data-state");
+      markState(idx, state, btn);
+    });
+  }
+  const state = { heightState: null, items: {} };
+  function toggleHeight(which) {
+    state.heightState = which;
+    $("#heightPass").setAttribute("aria-pressed", which === "PASS");
+    $("#heightFail").setAttribute("aria-pressed", which === "FAIL");
+    $("#heightPass").className = "chip " + (which === "PASS" ? "success" : "neutral");
+    $("#heightFail").className = "chip " + (which === "FAIL" ? "danger" : "neutral");
+  }
+  function markState(idx, which, btn) {
+    state.items[idx] = which;
+    const row = btn.parentElement;
+    const passBtn = row.querySelectorAll(".chip")[0];
+    const failBtn = row.querySelectorAll(".chip")[1];
+    if (which === "PASS") {
+      passBtn.className = "chip success";
+      failBtn.className = "chip danger";
+      passBtn.setAttribute("aria-pressed", true);
+      failBtn.setAttribute("aria-pressed", false);
+    } else {
+      passBtn.className = "chip neutral";
+      failBtn.className = "chip danger";
+      passBtn.setAttribute("aria-pressed", false);
+      failBtn.setAttribute("aria-pressed", true);
+    }
+  }
+  // Signature pad
+  const sigPad = $("#sigPad");
+  const ctx = sigPad.getContext("2d");
+  ctx.lineWidth = 2; ctx.lineJoin = "round"; ctx.lineCap = "round";
+  let drawing = false, last = null;
+  function getPos(e) {
+    const rect = sigPad.getBoundingClientRect();
+    const touch = e.touches ? e.touches[0] : e;
+    return {
+      x: (touch.clientX - rect.left) * (sigPad.width / rect.width),
+      y: (touch.clientY - rect.top) * (sigPad.height / rect.height)
+    };
+  }
+  function startDraw(e){ drawing = true; last = getPos(e); }
+  function moveDraw(e){ if(!drawing) return; const p=getPos(e); ctx.beginPath(); ctx.moveTo(last.x,last.y); ctx.lineTo(p.x,p.y); ctx.stroke(); last=p; }
+  function endDraw(){ drawing=false; last=null; }
+  sigPad.addEventListener("mousedown", startDraw);
+  sigPad.addEventListener("mousemove", moveDraw);
+  window.addEventListener("mouseup", endDraw);
+  sigPad.addEventListener("touchstart", e=>{ e.preventDefault(); startDraw(e); });
+  sigPad.addEventListener("touchmove", e=>{ e.preventDefault(); moveDraw(e); });
+  sigPad.addEventListener("touchend", e=>{ e.preventDefault(); endDraw(e); });
+  $("#clearSig").addEventListener("click", () => ctx.clearRect(0,0,sigPad.width, sigPad.height));
+  // Persistence
+  function saveDraft(){
+    localStorage.setItem("safetyDraft", JSON.stringify(collectData()));
+    alert("Draft saved on this device.");
+  }
+  function loadDraft(){
+    const raw = localStorage.getItem("safetyDraft");
+    if (!raw) return;
+    try {
+      const d = JSON.parse(raw);
+      $("#driverName").value = d.driverName || "";
+      $("#vehicleReg").value = d.vehicleReg || "";
+      $("#fleetNo").value = d.fleetNo || "";
+      $("#location").value = d.location || "";
+      $("#dateTime").value = d.dateTime || "";
+      $("#heightText").value = d.heightText || "";
+      if (d.heightState) toggleHeight(d.heightState);
+      Object.entries(d.items || {}).forEach(([idx, val]) => {
+        const container = document.querySelectorAll("#checklist .item")[idx];
+        if (!container) return;
+        const passBtn = container.querySelectorAll(".chip")[0];
+        const failBtn = container.querySelectorAll(".chip")[1];
+        (val === "PASS" ? passBtn : failBtn).click();
+      });
+      $("#comments").value = d.comments || "";
+      if (d.signatureDataURL) { const img = new Image(); img.onload = () => ctx.drawImage(img, 0, 0); img.src = d.signatureDataURL; }
+    } catch {}
+  }
+  function collectData(){
+    const signatureDataURL = sigPad.toDataURL("image/png");
+    return {
+      driverName: $("#driverName").value.trim(),
+      vehicleReg: $("#vehicleReg").value.trim(),
+      fleetNo: $("#fleetNo").value.trim(),
+      location: $("#location").value.trim(),
+      dateTime: $("#dateTime").value,
+      heightText: $("#heightText").value.trim(),
+      heightState: state.heightState,
+      items: state.items,
+      comments: $("#comments").value.trim(),
+      signatureDataURL
+    };
+  }
+  function generateDefectNo(){
+    const now = new Date();
+    const yyyy = now.getFullYear();
+    const mm = String(now.getMonth()+1).padStart(2,"0");
+    const dd = String(now.getDate()).padStart(2,"0");
+    const hh = String(now.getHours()).padStart(2,"0");
+    const mi = String(now.getMinutes()).padStart(2,"0");
+    const ss = String(now.getSeconds()).padStart(2,"0");
+    const rand = Math.floor(Math.random()*900 + 100);
+    return \`DFT-\${yyyy}\${mm}\${dd}-\${hh}\${mi}\${ss}-\${rand}\`;
+  }
+  function buildReport(d){
+    const fails = [];
+    if (d.heightState === "FAIL") fails.push(\`Height indicator (set: \${d.heightText || "N/A"})\`);
+    CHECK_ITEMS.forEach((label, idx) => { if (d.items[idx] === "FAIL") fails.push(label); });
+    const hasFail = fails.length > 0;
+    const defectNo = hasFail ? generateDefectNo() : null;
+    const rows = \`
+      <tr><th>Driver</th><td>\${escapeHtml(d.driverName)}</td></tr>
+      <tr><th>Vehicle reg</th><td>\${escapeHtml(d.vehicleReg)}</td></tr>
+      <tr><th>Fleet/Unit</th><td>\${escapeHtml(d.fleetNo)}</td></tr>
+      <tr><th>Location</th><td>\${escapeHtml(d.location)}</td></tr>
+      <tr><th>Date & time</th><td>\${escapeHtml(d.dateTime)}</td></tr>
+      <tr><th>Height set</th><td>\${escapeHtml(d.heightText)}</td></tr>
+    \`;
+    const checklistHtml = [\`
+      <tr><th>Height indicator</th><td>\${d.heightState || "N/A"}</td></tr>
+    \`].concat(CHECK_ITEMS.map((label, idx) =>
+        \`<tr><th>\${escapeHtml(label)}</th><td>\${d.items[idx] || "N/A"}</td></tr>\`)
+      ).join("");
+    const report = \`<!DOCTYPE html>
+    <html lang="en-GB"><head>
+      <meta charset="UTF-8" />
+      <meta name="viewport" content="width=device-width, initial-scale=1" />
+      <title>Safety Check Report</title>
+      <style>
+        body { font-family: Arial, Helvetica, sans-serif; color: #111; margin: 30px; }
+        h1 { margin: 0 0 4px; }
+        .muted { color: #6b7280; }
+        table { border-collapse: collapse; width: 100%; margin: 16px 0; }
+        th, td { text-align: left; border: 1px solid #e5e7eb; padding: 8px; }
+        th { background: #f3f4f6; width: 40%; }
+        .badge { display: inline-block; padding: 6px 10px; border-radius: 999px; }
+        .ok { background: #ecfdf5; border: 1px solid #a7f3d0; }
+        .fail { background: #fef2f2; border: 1px solid #fecaca; }
+        .signature { margin-top: 18px; }
+        img.sig { max-width: 480px; border: 1px solid #e5e7eb; }
+        .defect { padding: 12px; background: #fff7ed; border: 1px solid #fed7aa; }
+      </style>
+    </head><body>
+      <h1>Vehicle Safety Check Report</h1>
+      <p class="muted">Generated \${new Date().toLocaleString()}</p>
+      \${hasFail ? \`<div class="defect"><strong>Defect(s) detected.</strong> Defect ticket number: <strong>\${defectNo}</strong><br/>Items: \${escapeHtml(fails.join(", "))}</div>\` : \`<span class="badge ok">All checks passed</span>\`}
+
+      <h2>Job details</h2>
+      <table>\${rows}</table>
+
+      <h2>Checklist</h2>
+      <table>\${checklistHtml}</table>
+
+      <h2>Comments</h2>
+      <p>\${escapeHtml(d.comments || "None")}</p>
+
+      <div class="signature">
+        <h2>Driver signature</h2>
+        <img class="sig" src="\${d.signatureDataURL}" alt="Signature"/>
+      </div>
+
+      <footer><p class="muted">Proof of check completed by driver. Store with job file. </p></footer>
+    </body></html>\`;
+    return { html: report, defectNo, fails };
+  }
+  function escapeHtml(s=""){ return s.replace(/[&<>"']/g, m => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#039;"}[m])); }
+  function download(filename, content){
+    const blob = new Blob([content], {type:"text/html"});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = filename; document.body.appendChild(a); a.click();
+    setTimeout(()=>{ URL.revokeObjectURL(url); a.remove(); }, 500);
+  }
+  function mailto(data, defectNo, fails){
+    const subject = encodeURIComponent(\`Defect report \${defectNo} — \${data.vehicleReg}\`);
+    const body = encodeURIComponent([\`Defect ticket: \${defectNo}\`,\`Driver: \${data.driverName}\`,\`Vehicle: \${data.vehicleReg} (\${data.fleetNo || "N/A"})\`,\`Location: \${data.location || "N/A"}\`,\`Date/time: \${data.dateTime}\`,"", "Failed items:", \`- \${fails.join("\n- ")}\`, "", "Comments:", data.comments || "None"].join("\n"));
+    window.location.href = \`mailto:?subject=\${subject}&body=\${body}\`;
+  }
+  function saveDraftHandler(){ saveDraft(); }
+  function submitHandler(){
+    const d = collectData();
+    if (!d.driverName || !d.vehicleReg) { alert("Driver name and vehicle registration are required."); return; }
+    const { html, defectNo, fails } = buildReport(d);
+    const stamp = new Date().toISOString().replace(/[:.]/g,"-");
+    const fileName = \`safety_report_\${d.vehicleReg}_\${stamp}.html\`;
+    download(fileName, html);
+    if (fails.length) { mailto(d, defectNo, fails); }
+    localStorage.removeItem("safetyDraft");
+    alert("Report generated. You can email the attached HTML or print it to PDF.");
+  }
+  // Init
+  document.getElementById("saveDraft").addEventListener("click", saveDraftHandler);
+  document.getElementById("submit").addEventListener("click", submitHandler);
+  function init(){ buildList(); setDateTimeNow(); loadDraft(); }
+  window.addEventListener("DOMContentLoaded", init);
+  </script>
+</body>
+</html>
