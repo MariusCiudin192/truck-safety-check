@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- App theme -->
+    <style name="Theme.SafetyCheck" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+        <!-- Optional: status bar colour -->
+        <item name="android:statusBarColor">@android:color/black</item>
+        <!-- Material 3 compat if needed -->
+        <item name="android:windowLightStatusBar">false</item>
+    </style>
+</resources>
